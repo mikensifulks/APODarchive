@@ -1,0 +1,77 @@
+import nasapy
+from json2html import *
+import re
+import datetime
+from datetime import timedelta
+import random
+from bs4 import BeautifulSoup
+import requests
+import tweepy
+import schedule
+import time
+
+api_key = "xxx"
+api_secret = "xxx"
+bearer_token = "xxx"
+access_token = "xxx"
+access_token_secret = "xxx"
+
+client = tweepy.Client(bearer_token, api_key, api_secret, access_token, access_token_secret, wait_on_rate_limit=True)
+
+auth = tweepy.OAuth1UserHandler(api_key, api_secret, access_token, access_token_secret)
+api = tweepy.API(auth)
+
+k = "xxx"
+nasa = nasapy.Nasa(key=k)
+
+
+def tweet():
+    start_date = datetime.datetime(2020, 1, 1)
+    end_date = start_date + timedelta(days=1450)
+    random_date = start_date + (end_date - start_date) * random.random()
+
+    apod = nasa.picture_of_the_day(date=random_date)
+    dictionary = dict(apod)
+
+    title = dictionary.get('title')
+    date = dictionary.get('date')
+
+    match = str(re.findall('2[0-4].[0-1][0-9].[0-3][0-9]', date))
+    new_match = (match.replace('-', ''))[2:-2]
+
+    copyright_msg = dictionary.get('copyright')
+    url = f"https://apod.nasa.gov/apod/ap{new_match}.html"
+
+    html = json2html.convert(json=apod)
+
+    soup = BeautifulSoup(html, 'html.parser')
+    find = str(soup.find_all('td', limit=4))
+    image_link = re.findall('https?:.*.(?:png|jpg)', find)
+    image_str = str(image_link)[2:-2]
+
+    if image_str == '':
+        print("no image available")
+    else:
+        data = requests.get(image_str).content
+        f = open('img.jpg', 'wb')
+        f.write(data)
+
+        with open('image.jpg', 'wb') as handler:
+            handler.write(data)
+        media = api.media_upload('image.jpg')
+
+        if copyright_msg is None:
+            tweet_text = title + "\n" + "Date posted: " + date + "\n" + "Link: " + url + "\n\n" + ("#space #astronomy "
+                                                                                                   "#NASA")
+        else:
+            tweet_text = (title + "\n\n" + "Date posted: " + date + "\n" + "Image credit: " + copyright_msg + "\n" +
+                          "Link: " + url + "\n\n" + "#space #astronomy #NASA")
+        client.create_tweet(text=tweet_text, media_ids=[media.media_id])
+        print("Tweet sent!")
+
+
+schedule.every(6).hours.do(tweet)
+
+while True:
+    schedule.run_pending()
+    time.sleep(1)
